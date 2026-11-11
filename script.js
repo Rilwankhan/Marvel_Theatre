@@ -1139,12 +1139,53 @@ MQ.hall3d = (() => {
     const screen = new THREE.Mesh(sGeo, new THREE.MeshBasicMaterial({ map: sTex, side: THREE.BackSide, toneMapped: false })); screen.position.set(0, 5.2, SCREEN_Z + SR); scene.add(screen);
     const screenVideoUrl = window.MQ_MEDIA && window.MQ_MEDIA.screenVideos && (window.MQ_MEDIA.screenVideos[movie.id] || window.MQ_MEDIA.screenVideos.default);
     let screenVideo = null, screenVideoTexture = null;
-    if (screenVideoUrl) {
-      screenVideo = document.createElement('video'); screenVideo.src = screenVideoUrl; screenVideo.crossOrigin = 'anonymous'; screenVideo.loop = true; screenVideo.autoplay = true; screenVideo.muted = false; screenVideo.playsInline = true; screenVideo.preload = 'auto';
-      screenVideo.addEventListener('error', () => { opts.onVideoError && opts.onVideoError(screenVideoUrl); });
-      screenVideoTexture = new THREE.VideoTexture(screenVideo); screenVideoTexture.wrapS = THREE.RepeatWrapping; screenVideoTexture.repeat.x = -1; screenVideoTexture.offset.x = 1;
-      screen.material.map = screenVideoTexture; screen.material.needsUpdate = true;
-    }
+    
+if (screenVideoUrl) {
+  screenVideo = document.createElement('video');
+
+  // Configure video before assigning its source
+  screenVideo.crossOrigin = 'anonymous';
+  screenVideo.loop = true;
+  screenVideo.autoplay = true;
+  screenVideo.muted = true;
+  screenVideo.playsInline = true;
+  screenVideo.setAttribute('playsinline', '');
+  screenVideo.preload = 'auto';
+
+  // Debug video loading
+  screenVideo.addEventListener('error', () => {
+    console.error('Cinema video loading failed:', {
+      url: screenVideo.currentSrc || screenVideoUrl,
+      errorCode: screenVideo.error?.code,
+      errorMessage: screenVideo.error?.message
+    });
+
+    opts.onVideoError &&
+      opts.onVideoError(screenVideo.currentSrc || screenVideoUrl);
+  });
+
+  screenVideo.addEventListener('canplay', () => {
+    console.log('Cinema video is ready:', screenVideo.currentSrc);
+  });
+
+  // Create Three.js video texture
+  screenVideoTexture = new THREE.VideoTexture(screenVideo);
+  screenVideoTexture.wrapS = THREE.RepeatWrapping;
+  screenVideoTexture.repeat.x = -1;
+  screenVideoTexture.offset.x = 1;
+
+  screen.material.map = screenVideoTexture;
+  screen.material.needsUpdate = true;
+
+  // Assign source after configuration
+  screenVideo.src = new URL(
+    screenVideoUrl,
+    document.baseURI
+  ).href;
+
+  screenVideo.load();
+}
+
     box(SW + 0.6, SH + 0.6, 0.15, B(0x050507), 0, 5.2, SCREEN_Z - 0.2);
 
     /* ---- balcony ---- */
@@ -1315,12 +1356,25 @@ MQ.hall3d = (() => {
       [cushion, back, arm, hit, ribs, coffer, dl, al].forEach(m => m.dispose && m.dispose());
       renderer.dispose(); try { renderer.forceContextLoss(); } catch (e) { /* ignore */ } canvas.remove();
     }
-    function playScreenVideo() {
-      if (!screenVideo) return;
-      if (!screenVideo.paused && !screenVideo.ended) return;
-      const result = screenVideo.play();
-      if (result && result.catch) result.catch(() => { opts.onVideoBlocked && opts.onVideoBlocked(); });
-    }
+    
+function playScreenVideo() {
+  if (!screenVideo) return;
+
+  screenVideo.muted = false;
+  screenVideo.volume = 1;
+
+  if (!screenVideo.paused && !screenVideo.ended) return;
+
+  const result = screenVideo.play();
+
+  if (result && result.catch) {
+    result.catch(() => {
+      screenVideo.muted = true;
+      opts.onVideoBlocked && opts.onVideoBlocked();
+    });
+  }
+}
+
     return { setMode, zoom, setSeats, playScreenVideo, destroy, reset: () => setMode(mode), get mode() { return mode; }, debugCamera: () => ({ pos: camera.position.toArray(), mode }), resolve };
   }
   return { create, MODES, resolve };
