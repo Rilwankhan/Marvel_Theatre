@@ -701,17 +701,26 @@ MQ.art = (() => {
     const r = rng(11); for (let i = 0; i < 260; i++) { ctx.fillStyle = r() > 0.5 ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.06)'; ctx.fillRect(r() * w, r() * h, 1.3, 1.3); }
     return canvas;
   }
-  const fcache = {};
-  function foodURL(item) {
-    const configured = window.MQ_MEDIA && window.MQ_MEDIA.food && window.MQ_MEDIA.food[item.id];
+  const fcache = {}, generatedFcache = {};
+  function foodURL(item, useConfigured = true) {
+    const configured = useConfigured && window.MQ_MEDIA && window.MQ_MEDIA.food && window.MQ_MEDIA.food[item.id];
     if (configured) { fcache[item.id] = Promise.resolve(configured); return fcache[item.id]; }
-    if (!fcache[item.id]) fcache[item.id] = new Promise(res => { const c = document.createElement('canvas'); food(c, item); c.toBlob(b => res(b ? URL.createObjectURL(b) : c.toDataURL('image/jpeg', 0.8)), 'image/webp', 0.78); });
-    return fcache[item.id];
+    if (!generatedFcache[item.id]) generatedFcache[item.id] = new Promise(res => { const c = document.createElement('canvas'); food(c, item); c.toBlob(b => res(b ? URL.createObjectURL(b) : c.toDataURL('image/jpeg', 0.8)), 'image/webp', 0.78); });
+    return generatedFcache[item.id];
   }
   let fio;
   function lazyFood(root) {
     const imgs = Array.from((root || document).querySelectorAll('img[data-food]:not([src])'));
-    const go = el => MQ.data.snack(el.dataset.food) && foodURL(MQ.data.snack(el.dataset.food)).then(u => { el.src = u; el.classList.add('in'); });
+    const go = el => {
+      const item = MQ.data.snack(el.dataset.food);
+      if (!item) return;
+      el.onload = () => el.classList.add('in');
+      el.onerror = () => {
+        el.onerror = null;
+        foodURL(item, false).then(u => { el.src = u; });
+      };
+      foodURL(item).then(u => { el.src = u; });
+    };
     if (!('IntersectionObserver' in window)) { imgs.forEach(go); return; }
     fio = fio || new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { fio.unobserve(e.target); go(e.target); } }), { rootMargin: '240px' });
     imgs.forEach(i => fio.observe(i));
